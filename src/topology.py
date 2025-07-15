@@ -1,5 +1,3 @@
-# Marcello gay
-
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.node import RemoteController, OVSKernelSwitch

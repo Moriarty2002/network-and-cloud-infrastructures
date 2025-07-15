@@ -1,0 +1,4 @@
+-a 10.0.0.4 -rp 10001 VoIP -x G.711.2 -h RTP -VAD
+-a 10.0.0.4 -rp 10002 Telnet
+-a 10.0.0.5 -rp 10003 DNS
+# TODO: add video traffic to both users and starting from both cdns

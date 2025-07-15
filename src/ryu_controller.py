@@ -128,7 +128,7 @@ class RyuController(app_manager.RyuApp):
             port_out_h2 = self.get_out_port(dpid, self.h2)
             self.add_mac_flow(datapath, self.cdn1, self.h1, port_out_h1)
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_h2)
-            self.add_arp(datapath, self.cdn1, port_out_h1)
+            self.add_arp(datapath, self.cdn1, [port_out_h1, port_out_h2])
             
             port_out_s3 = self.get_out_port(dpid, 3) # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_s3)
@@ -141,7 +141,7 @@ class RyuController(app_manager.RyuApp):
             port_out_h4 = self.get_out_port(dpid, self.h4)
             self.add_mac_flow(datapath, self.cdn2, self.h3, port_out_h3)
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_h4)
-            self.add_arp(datapath, self.cdn2, port_out_h3)
+            self.add_arp(datapath, self.cdn2, [port_out_h3, port_out_h4])
             
             port_out_s5 = self.get_out_port(dpid, 5) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s5)
@@ -162,7 +162,12 @@ class RyuController(app_manager.RyuApp):
         parser = datapath.ofproto_parser
         
         match = parser.OFPMatch(eth_src=eth_src, eth_dst=mac_broadcast, eth_type=eth_type_arp)
-        actions = [parser.OFPActionOutput(out_port)]
+        actions = []
+        if not isinstance(out_port, list):
+            out_port = [out_port]
+
+        for port in out_port:
+            actions.append(parser.OFPActionOutput(port))
         self.add_flow(datapath, priority=20, match=match, actions=actions)
 
     

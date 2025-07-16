@@ -78,7 +78,7 @@ class RyuController(app_manager.RyuApp):
             self.add_arp_flow(datapath, self.cdn1, port_out_s3)
             # premium streaming link
             port_out_s6 = self.get_out_port(dpid, 6)
-            # self.add_video_flow(datapath, self.cdn1, self.h1, UDP_PORT_STREAMING, port_out_s6)
+            self.add_video_flow(datapath, self.cdn1, self.h1, UDP_PORT_STREAMING, port_out_s6)
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_s1)
@@ -105,6 +105,9 @@ class RyuController(app_manager.RyuApp):
             self.add_mac_flow(datapath, self.cdn2, self.h3, port_out_s5)
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_s5)
             self.add_arp_flow(datapath, self.cdn2, port_out_s5)
+            # premium streaming link
+            port_out_s6 = self.get_out_port(dpid, 6)
+            self.add_video_flow(datapath, self.cdn2, self.h4, UDP_PORT_STREAMING, port_out_s6)
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s1)

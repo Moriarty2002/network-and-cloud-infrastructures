@@ -34,19 +34,19 @@ class Environment(object):
         self.s6 = self.net.addSwitch('s6') # hosts common switch
         
         # top slice: cdn1, s1, s2, s3, s6, h1, h2
-        self.net.addLink(self.cdn1, self.s1, bw=10, delay='1ms', port1=1, port2=1)
+        self.net.addLink(self.cdn1, self.s1, bw=15, delay='1ms', port1=1, port2=1)
         self.net.addLink(self.s1, self.s2, bw=10, delay='5ms', port1=3, port2=1)
-        self.net.addLink(self.s2, self.s3, bw=5, delay='10ms', port1=2, port2=1)
-        self.net.addLink(self.s3, self.s6, bw=5, delay='10ms', port1=2, port2=1)
-        self.net.addLink(self.s2, self.s6, bw=5, delay='3ms', port1=3, port2=2) # direct link for premium users
+        self.net.addLink(self.s2, self.s3, bw=2, delay='20ms', port1=2, port2=1)
+        self.net.addLink(self.s3, self.s6, bw=2, delay='20ms', port1=2, port2=1)
+        self.net.addLink(self.s2, self.s6, bw=6, delay='3ms', port1=3, port2=2) # direct link for premium users
         self.net.addLink(self.s6, self.h1, bw=8, delay='5ms', port1=3, port2=1) # s6 to h1, h2 links 
         self.net.addLink(self.s6, self.h2, bw=8, delay='5ms', port1=4, port2=1) 
 
         # bottom slice: cdn2, s1, s4, s5, s6, h3, h4
-        self.net.addLink(self.cdn2, self.s1, bw=10, delay='1ms', port1=1, port2=2)
+        self.net.addLink(self.cdn2, self.s1, bw=15, delay='1ms', port1=1, port2=2)
         self.net.addLink(self.s1, self.s4, bw=10, delay='5ms', port1=4, port2=1)
-        self.net.addLink(self.s4, self.s5, bw=5, delay='10ms', port1=2, port2=1)
-        self.net.addLink(self.s5, self.s6, bw=5, delay='10ms', port1=2, port2=6)
+        self.net.addLink(self.s4, self.s5, bw=2, delay='20ms', port1=2, port2=1)
+        self.net.addLink(self.s5, self.s6, bw=2, delay='20ms', port1=2, port2=6)
         self.net.addLink(self.s4, self.s6, bw=5, delay='3ms', port1=3, port2=5) # direct link for premium users
         self.net.addLink(self.s6, self.h3, bw=8, delay='5ms', port1=7, port2=1) # s6 to h3, h4 links 
         self.net.addLink(self.s6, self.h4, bw=8, delay='5ms', port1=8, port2=1)

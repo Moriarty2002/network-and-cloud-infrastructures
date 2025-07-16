@@ -189,16 +189,17 @@ class RyuController(app_manager.RyuApp):
     
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-        msg = ev.msg
-        datapath = msg.datapath
-        dpid = datapath.id
-        in_port = msg.match['in_port']
+        raise NotImplementedError
+        # msg = ev.msg
+        # datapath = msg.datapath
+        # dpid = datapath.id
+        # in_port = msg.match['in_port']
         
-        pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocol(ethernet.ethernet)
+        # pkt = packet.Packet(msg.data)
+        # eth = pkt.get_protocol(ethernet.ethernet)
         
-        src = eth.src
-        dst = eth.dst
+        # src = eth.src
+        # dst = eth.dst
         
-        self.logger.info("PacketIn: dpid=%s src=%s dst=%s in_port=%s", dpid, src, dst, in_port)
+        # self.logger.info("PacketIn: dpid=%s src=%s dst=%s in_port=%s", dpid, src, dst, in_port)
         

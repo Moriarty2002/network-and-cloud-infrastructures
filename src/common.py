@@ -8,6 +8,8 @@ OUT_PORT_MAP = {
             5:  {4: 1, 6: 2},
             6:  {MAC_HOSTS[0]: 3, MAC_HOSTS[1]: 4, MAC_HOSTS[2]: 7, MAC_HOSTS[3]: 8, 3: 1, 2: 2, 5: 6, 4: 5}
         }
+CDN_IPS = ['10.0.0.1', '10.0.0.2']
+PREMIUM_HOSTS = ['10.0.0.4', '10.0.0.7']
 
 MAC_BROADCAST = "ff:ff:ff:ff:ff:ff"
 ETH_TYPE_ARP = 0x0806

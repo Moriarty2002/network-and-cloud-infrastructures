@@ -3,9 +3,7 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet
-from ryu.lib.packet import ethernet
-from ryu.lib.packet import ether_types
+from ryu.lib.packet import packet, ethernet, ipv4, udp
 from ryu.lib import hub
 from common import *
 
@@ -27,6 +25,8 @@ class RyuController(app_manager.RyuApp):
         
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)
+        self.premium_flows = set()  # store flow identifiers
+
     
     """
     base code
@@ -80,6 +80,9 @@ class RyuController(app_manager.RyuApp):
             # premium streaming link
             # port_out_s6 = self.get_out_port(dpid, 6)
             # self.add_video_flow(datapath, self.cdn1, self.h1, UDP_PORT_STREAMING, port_out_s6)
+
+            self.add_to_controller_flow(datapath)
+
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_s1)
@@ -177,27 +180,37 @@ class RyuController(app_manager.RyuApp):
             actions.append(parser.OFPActionOutput(port))
         self.add_flow(datapath, priority=20, match=match, actions=actions)
 
-    def add_video_flow(self, datapath, src_mac, dst_mac, udp_port, out_port, priority=50):
+    def add_video_flow(self, datapath, src_ip, dst_ip, udp_src, udp_dst, out_port, priority=50):
         parser = datapath.ofproto_parser
         match = parser.OFPMatch(
             eth_type=ETH_TYPE_IPV4, 
             ip_proto=IP_PROTO_UDP,
-            eth_src=src_mac,
-            eth_dst=dst_mac,
-            udp_dst=udp_port
+            ipv4_src=src_ip,
+            ipv4_dst=dst_ip,
+            udp_src=udp_src,
+            udp_dst=udp_dst
         )
         actions = [parser.OFPActionOutput(out_port)]
-        self.add_flow(datapath, priority, match, actions)
+        self.logger.info(f"Installed reroute for video stream on switch {datapath.id} → port {out_port}")
+        self.add_flow(datapath, priority, match, actions, 10)
 
-    
-    def add_flow(self, datapath, priority, match, actions):
+    def add_to_controller_flow(self, datapath):
+        parser = datapath.ofproto_parser
+        ofproto = datapath.ofproto
+        
+        match = parser.OFPMatch(eth_type=0x0800, ip_proto=IP_PROTO_UDP, ipv4_src='10.0.0.1', ipv4_dst='10.0.0.4')
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+        self.add_flow(datapath, 30, match, actions)
+        
+    def add_flow(self, datapath, priority, match, actions, idle_timeout=0):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
         mod = parser.OFPFlowMod(
             datapath=datapath, priority=priority,
-            match=match, instructions=inst
+            match=match, instructions=inst,
+            idle_timeout = idle_timeout
         )
         datapath.send_msg(mod)
     
@@ -207,71 +220,123 @@ class RyuController(app_manager.RyuApp):
     
     
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def _packet_in_handler(self, ev):
-        raise NotImplementedError
+    def packet_in_handler(self, ev):
+        msg = ev.msg
+        dp = msg.datapath
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        dpid = dp.id
+
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+        ip = pkt.get_protocol(ipv4.ipv4)
+        udp_pkt = pkt.get_protocol(udp.udp)
+
+        if not ip or not udp_pkt:
+            return  # only handle IPv4 UDP
+
+        src_ip = ip.src
+        dst_ip = ip.dst
+        udp_src = udp_pkt.src_port
+        udp_dst = udp_pkt.dst_port
+
+        self.logger.info(f"New UDP flow: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
+
+        match = parser.OFPMatch(
+            eth_type=0x0800,
+            ip_proto=17,
+            ipv4_src=src_ip,
+            ipv4_dst=dst_ip,
+            udp_src=udp_src,
+            udp_dst=udp_dst
+        )
+
+        if dpid == 2:
+            port_out_s3 = self.get_out_port(dpid, 3)
+            actions = [parser.OFPActionOutput(port_out_s3)]
+        else:
+            port_out_s5 = self.get_out_port(dpid, 5)
+            actions = [parser.OFPActionOutput(port_out_s5)]
+        
+        self.add_flow(dp, 50, match, actions)
 
     """
     stats code
     """
     
-    def request_stats(self, datapath):
-        self.logger.info('Sending stats request to switch %016x', datapath.id)
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-
-        cookie = cookie_mask = 0
-        match = parser.OFPMatch(in_port=1)
-        req = parser.OFPFlowStatsRequest(datapath, 0,
-                                            ofproto.OFPTT_ALL,
-                                            ofproto.OFPP_ANY, ofproto.OFPG_ANY,
-                                            cookie, cookie_mask,
-                                            match)
-        datapath.send_msg(req)
-        
     def _monitor(self):
         while True:
             for dp in self.datapaths.values():
-                self.request_stats(dp)
-            hub.sleep(2) 
+                self._request_flow_stats(dp)
+            hub.sleep(5)
 
-    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, CONFIG_DISPATCHER])
-    def _state_change_handler(self, ev):
-        datapath = ev.datapath
-        if ev.state == MAIN_DISPATCHER:
-            if datapath.id not in self.datapaths:
-                self.logger.info('Registering datapath: %016x', datapath.id)
-                self.datapaths[datapath.id] = datapath
-        elif ev.state == ofproto_v1_3.OFPCR_ROLE_SLAVE:
-            if datapath.id in self.datapaths:
-                del self.datapaths[datapath.id]
-    
-    
+    def _request_flow_stats(self, datapath):
+        parser = datapath.ofproto_parser
+        req = parser.OFPFlowStatsRequest(datapath)
+        datapath.send_msg(req)
+
+    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER])
+    def state_change_handler(self, ev):
+        dp = ev.datapath
+        if dp.id not in self.datapaths:
+            self.datapaths[dp.id] = dp
+
+
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def flow_stats_reply_handler(self, ev):
-        flows = []
-        self.logger.info("mammt")
+        dp = ev.msg.datapath
         for stat in ev.msg.body:
-            flows.append('table_id=%s '
-                        'duration_sec=%d duration_nsec=%d '
-                        'priority=%d '
-                        'idle_timeout=%d hard_timeout=%d flags=0x%04x '
-                        'cookie=%d packet_count=%d byte_count=%d '
-                        'match=%s instructions=%s' %
-                        (stat.table_id,
-                        stat.duration_sec, stat.duration_nsec,
-                        stat.priority,
-                        stat.idle_timeout, stat.hard_timeout, stat.flags,
-                        stat.cookie, stat.packet_count, stat.byte_count,
-                        stat.match, stat.instructions))
-        self.logger.debug('FlowStats: %s', flows)
-        
-    def redirect_premium_flow(self, datapath, match):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        # Example: route to faster/lower-latency path
-        out_port = self.get_out_port(datapath.id, 6)  # e.g., direct premium path
-        actions = [parser.OFPActionOutput(out_port)]
-        self.add_flow(datapath, priority=100, match=match, actions=actions)
+            match_fields = dict(stat.match.items())
 
+            src_ip = match_fields.get('ipv4_src')
+            dst_ip = match_fields.get('ipv4_dst')
+            proto = match_fields.get('ip_proto')
+            udp_src = match_fields.get('udp_src')
+            udp_dst = match_fields.get('udp_dst')
 
-            
+            # Only consider complete flows that have been matched with rules from s2 and s4
+            if not all([src_ip, dst_ip, proto, udp_src, udp_dst]):
+                continue
+
+            if src_ip in CDN_IPS and dst_ip in PREMIUM_HOSTS:
+                duration = stat.duration_sec + stat.duration_nsec / 1e9
+                bytes_transferred = stat.byte_count
+                bitrate = (bytes_transferred * 8) / duration if duration > 0 else 0
+
+                if bitrate > 3_000_000:  # 3 Mbps threshold for video
+                    self.logger.info(f"VIDEO FLOW: {src_ip}:{udp_src} → {dst_ip}:{udp_dst} @ {bitrate/1e6:.2f} Mbps")
+                    flow_id = (src_ip, dst_ip, udp_src, udp_dst) 
+                    if flow_id not in self.premium_flows:
+                        self.logger.info(f"Installing reroute for new video flow: {flow_id}")
+                        port_out_s6 = self.get_out_port(dp.id, 6)
+                        self.add_video_flow(dp, src_ip, dst_ip, udp_src, udp_dst, port_out_s6)
+                        self.premium_flows.add(flow_id)
+                    else:
+                        self.logger.debug(f"Flow {flow_id} already rerouted, skipping")
+
+"""
+    TODO: enable dynamic video flow rule also on bottom slice + fine tune heuristic to define video streaming + remove flow from premium_flows set using:
+    mod = parser.OFPFlowMod(
+        datapath=dp,
+        match=match,
+        instructions=inst,
+        priority=100,
+        idle_timeout=60,
+        hard_timeout=300,
+        flags=ofproto.OFPFF_SEND_FLOW_REM  # !!!!! <----- THIS FLAG ACTIVE LISTENING ON FLOW RULE REMOVE (check how to manage default flag values for other cases in add_flow)
+    )
+
+    @set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
+    def flow_removed_handler(self, ev):
+        match = ev.msg.match
+        src_ip = match.get('ipv4_src')
+        dst_ip = match.get('ipv4_dst')
+        udp_src = match.get('udp_src')
+        udp_dst = match.get('udp_dst')
+
+        flow_id = (src_ip, dst_ip, udp_src, udp_dst)
+        if flow_id in self.rerouted_flows:
+            del self.rerouted_flows[flow_id]
+        self.logger.info(f"Flow removed by switch: {flow_id}")
+"""
+    

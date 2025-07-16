@@ -1,5 +1,4 @@
 from ryu.base import app_manager
-from ryu.app import simple_switch_13
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
@@ -10,8 +9,8 @@ from ryu.lib.packet import ether_types
 from ryu.lib import hub
 from common import *
 
-class RyuController(simple_switch_13.SimpleSwitch13):
-    OFP_VERSION = [ofproto_v1_3.OFP_VERSION]
+class RyuController(app_manager.RyuApp):
+    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         super(RyuController, self).__init__(*args, **kwargs)
@@ -24,14 +23,7 @@ class RyuController(simple_switch_13.SimpleSwitch13):
         self.h4 = MAC_HOSTS[3]
         
         # out_port_map [current switch] [ switch / host destination]
-        self.out_port_map = {
-            1:  {self.cdn1: 1, self.cdn2: 2, 2: 3, 4: 4},
-            2:  {1: 1, 3: 2, 6: 3},
-            3:  {2: 1, 6: 2},
-            4:  {1: 1, 5: 2, 6: 3},
-            5:  {4: 1, 6: 2},
-            6:  {self.h1: 3, self.h2: 4, self.h3: 7, self.h4: 8, 3: 1, 2: 2, 5: 6, 4: 5}
-        }
+        self.out_port_map = OUT_PORT_MAP
         
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)

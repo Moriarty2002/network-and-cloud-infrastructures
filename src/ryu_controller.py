@@ -1,4 +1,5 @@
 from ryu.base import app_manager
+from ryu.app import simple_switch_13
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
@@ -6,9 +7,10 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+from ryu.lib import hub
 from common import *
 
-class RyuController(app_manager.RyuApp):
+class RyuController(simple_switch_13.SimpleSwitch13):
     OFP_VERSION = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
@@ -30,6 +32,13 @@ class RyuController(app_manager.RyuApp):
             5:  {4: 1, 6: 2},
             6:  {self.h1: 3, self.h2: 4, self.h3: 7, self.h4: 8, 3: 1, 2: 2, 5: 6, 4: 5}
         }
+        
+        self.datapaths = {}
+        self.monitor_thread = hub.spawn(self._monitor)
+    
+    """
+    base code
+    """
     
     # new switch connected event
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -77,8 +86,8 @@ class RyuController(app_manager.RyuApp):
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_s3)
             self.add_arp_flow(datapath, self.cdn1, port_out_s3)
             # premium streaming link
-            port_out_s6 = self.get_out_port(dpid, 6)
-            self.add_video_flow(datapath, self.cdn1, self.h1, UDP_PORT_STREAMING, port_out_s6)
+            # port_out_s6 = self.get_out_port(dpid, 6)
+            # self.add_video_flow(datapath, self.cdn1, self.h1, UDP_PORT_STREAMING, port_out_s6)
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_s1)
@@ -106,8 +115,8 @@ class RyuController(app_manager.RyuApp):
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_s5)
             self.add_arp_flow(datapath, self.cdn2, port_out_s5)
             # premium streaming link
-            port_out_s6 = self.get_out_port(dpid, 6)
-            self.add_video_flow(datapath, self.cdn2, self.h4, UDP_PORT_STREAMING, port_out_s6)
+            # port_out_s6 = self.get_out_port(dpid, 6)
+            # self.add_video_flow(datapath, self.cdn2, self.h4, UDP_PORT_STREAMING, port_out_s6)
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s1)
@@ -208,16 +217,69 @@ class RyuController(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         raise NotImplementedError
-        # msg = ev.msg
-        # datapath = msg.datapath
-        # dpid = datapath.id
-        # in_port = msg.match['in_port']
+
+    """
+    stats code
+    """
+    
+    def request_stats(self, datapath):
+        self.logger.info('Sending stats request to switch %016x', datapath.id)
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        cookie = cookie_mask = 0
+        match = parser.OFPMatch(in_port=1)
+        req = parser.OFPFlowStatsRequest(datapath, 0,
+                                            ofproto.OFPTT_ALL,
+                                            ofproto.OFPP_ANY, ofproto.OFPG_ANY,
+                                            cookie, cookie_mask,
+                                            match)
+        datapath.send_msg(req)
         
-        # pkt = packet.Packet(msg.data)
-        # eth = pkt.get_protocol(ethernet.ethernet)
+    def _monitor(self):
+        while True:
+            for dp in self.datapaths.values():
+                self.request_stats(dp)
+            hub.sleep(2) 
+
+    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, CONFIG_DISPATCHER])
+    def _state_change_handler(self, ev):
+        datapath = ev.datapath
+        if ev.state == MAIN_DISPATCHER:
+            if datapath.id not in self.datapaths:
+                self.logger.info('Registering datapath: %016x', datapath.id)
+                self.datapaths[datapath.id] = datapath
+        elif ev.state == ofproto_v1_3.OFPCR_ROLE_SLAVE:
+            if datapath.id in self.datapaths:
+                del self.datapaths[datapath.id]
+    
+    
+    @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
+    def flow_stats_reply_handler(self, ev):
+        flows = []
+        self.logger.info("mammt")
+        for stat in ev.msg.body:
+            flows.append('table_id=%s '
+                        'duration_sec=%d duration_nsec=%d '
+                        'priority=%d '
+                        'idle_timeout=%d hard_timeout=%d flags=0x%04x '
+                        'cookie=%d packet_count=%d byte_count=%d '
+                        'match=%s instructions=%s' %
+                        (stat.table_id,
+                        stat.duration_sec, stat.duration_nsec,
+                        stat.priority,
+                        stat.idle_timeout, stat.hard_timeout, stat.flags,
+                        stat.cookie, stat.packet_count, stat.byte_count,
+                        stat.match, stat.instructions))
+        self.logger.debug('FlowStats: %s', flows)
         
-        # src = eth.src
-        # dst = eth.dst
-        
-        # self.logger.info("PacketIn: dpid=%s src=%s dst=%s in_port=%s", dpid, src, dst, in_port)
-        
+    def redirect_premium_flow(self, datapath, match):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        # Example: route to faster/lower-latency path
+        out_port = self.get_out_port(datapath.id, 6)  # e.g., direct premium path
+        actions = [parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, priority=100, match=match, actions=actions)
+
+
+            

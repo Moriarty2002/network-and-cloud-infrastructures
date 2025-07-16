@@ -13,13 +13,13 @@ class RyuController(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(RyuController, self).__init__(*args, **kwargs)
-        self.cdn1 = mac_cdns[0]
-        self.cdn2 = mac_cdns[1]
+        self.cdn1 = MAC_CDNS[0]
+        self.cdn2 = MAC_CDNS[1]
         
-        self.h1 = mac_hosts[0]
-        self.h2 = mac_hosts[1]
-        self.h3 = mac_hosts[2]
-        self.h4 = mac_hosts[3]
+        self.h1 = MAC_HOSTS[0]
+        self.h2 = MAC_HOSTS[1]
+        self.h3 = MAC_HOSTS[2]
+        self.h4 = MAC_HOSTS[3]
         
         # out_port_map [current switch] [ switch / host destination]
         self.out_port_map = {
@@ -49,25 +49,25 @@ class RyuController(app_manager.RyuApp):
             port_out_s2 = self.get_out_port(dpid, 2)  # forward to s2
             self.add_mac_flow(datapath, self.cdn1, self.h1, port_out_s2)
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_s2)
-            self.add_arp(datapath, self.cdn1, port_out_s2)
+            self.add_arp_flow(datapath, self.cdn1, port_out_s2)
             
             port_out_cdn1 = self.get_out_port(dpid, self.cdn1)  # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_cdn1)
             self.add_mac_flow(datapath, self.h2, self.cdn1, port_out_cdn1)
-            self.add_arp(datapath, self.h1, port_out_cdn1)
-            self.add_arp(datapath, self.h2, port_out_cdn1)
+            self.add_arp_flow(datapath, self.h1, port_out_cdn1)
+            self.add_arp_flow(datapath, self.h2, port_out_cdn1)
 
             # --- bottom slice (cdn2 <-> h3, h4) ---
             port_out_s4 = self.get_out_port(dpid, 4)  # forward to s4
             self.add_mac_flow(datapath, self.cdn2, self.h3, port_out_s4)
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_s4)
-            self.add_arp(datapath, self.cdn2, port_out_s4)
+            self.add_arp_flow(datapath, self.cdn2, port_out_s4)
             
             port_out_cdn2 = self.get_out_port(dpid, self.cdn2)  # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_cdn2)
             self.add_mac_flow(datapath, self.h4, self.cdn2, port_out_cdn2)
-            self.add_arp(datapath, self.h3, port_out_cdn2)
-            self.add_arp(datapath, self.h4, port_out_cdn2)
+            self.add_arp_flow(datapath, self.h3, port_out_cdn2)
+            self.add_arp_flow(datapath, self.h4, port_out_cdn2)
 
             
         elif dpid == 2:
@@ -75,52 +75,55 @@ class RyuController(app_manager.RyuApp):
             port_out_s3 = self.get_out_port(dpid, 3)
             self.add_mac_flow(datapath, self.cdn1, self.h1, port_out_s3)
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_s3)
-            self.add_arp(datapath, self.cdn1, port_out_s3)
+            self.add_arp_flow(datapath, self.cdn1, port_out_s3)
+            # premium streaming link
+            port_out_s6 = self.get_out_port(dpid, 6)
+            # self.add_video_flow(datapath, self.cdn1, self.h1, UDP_PORT_STREAMING, port_out_s6)
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_s1)
             self.add_mac_flow(datapath, self.h2, self.cdn1, port_out_s1)
-            self.add_arp(datapath, self.h1, port_out_s1)
-            self.add_arp(datapath, self.h2, port_out_s1)
+            self.add_arp_flow(datapath, self.h1, port_out_s1)
+            self.add_arp_flow(datapath, self.h2, port_out_s1)
         
         elif dpid == 3:
             # Traffic between cdn1 and hosts h1/h2
             port_out_s6 = self.get_out_port(dpid, 6)
             self.add_mac_flow(datapath, self.cdn1, self.h1, port_out_s6)
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_s6)
-            self.add_arp(datapath, self.cdn1, port_out_s6)
+            self.add_arp_flow(datapath, self.cdn1, port_out_s6)
             
             port_out_s2 = self.get_out_port(dpid, 2) # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_s2)
             self.add_mac_flow(datapath, self.h2, self.cdn1, port_out_s2)
-            self.add_arp(datapath, self.h1, port_out_s2)
-            self.add_arp(datapath, self.h2, port_out_s2)
+            self.add_arp_flow(datapath, self.h1, port_out_s2)
+            self.add_arp_flow(datapath, self.h2, port_out_s2)
 
         elif dpid == 4:
             # Traffic between cdn2 and hosts h3/h4
             port_out_s5 = self.get_out_port(dpid, 5)
             self.add_mac_flow(datapath, self.cdn2, self.h3, port_out_s5)
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_s5)
-            self.add_arp(datapath, self.cdn2, port_out_s5)
+            self.add_arp_flow(datapath, self.cdn2, port_out_s5)
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s1)
             self.add_mac_flow(datapath, self.h4, self.cdn2, port_out_s1)
-            self.add_arp(datapath, self.h3, port_out_s1)
-            self.add_arp(datapath, self.h4, port_out_s1)
+            self.add_arp_flow(datapath, self.h3, port_out_s1)
+            self.add_arp_flow(datapath, self.h4, port_out_s1)
 
         elif dpid == 5:
             # Traffic between cdn2 and hosts h3/h4
             port_out_s6 = self.get_out_port(dpid, 6)
             self.add_mac_flow(datapath, self.cdn2, self.h3, port_out_s6)
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_s6)
-            self.add_arp(datapath, self.cdn2, port_out_s6)
+            self.add_arp_flow(datapath, self.cdn2, port_out_s6)
             
             port_out_s4 = self.get_out_port(dpid, 4) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s4)
             self.add_mac_flow(datapath, self.h4, self.cdn2, port_out_s4)
-            self.add_arp(datapath, self.h3, port_out_s4)
-            self.add_arp(datapath, self.h4, port_out_s4)
+            self.add_arp_flow(datapath, self.h3, port_out_s4)
+            self.add_arp_flow(datapath, self.h4, port_out_s4)
 
         elif dpid == 6:  # s6: the common host switch
             # --- Top slice handling (cdn1 <-> h1, h2) ---
@@ -128,26 +131,26 @@ class RyuController(app_manager.RyuApp):
             port_out_h2 = self.get_out_port(dpid, self.h2)
             self.add_mac_flow(datapath, self.cdn1, self.h1, port_out_h1)
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_h2)
-            self.add_arp(datapath, self.cdn1, [port_out_h1, port_out_h2])
+            self.add_arp_flow(datapath, self.cdn1, [port_out_h1, port_out_h2])
             
             port_out_s3 = self.get_out_port(dpid, 3) # reverse
             self.add_mac_flow(datapath, self.h1, self.cdn1, port_out_s3)
             self.add_mac_flow(datapath, self.h2, self.cdn1, port_out_s3)
-            self.add_arp(datapath, self.h1, port_out_s3)
-            self.add_arp(datapath, self.h2, port_out_s3)
+            self.add_arp_flow(datapath, self.h1, port_out_s3)
+            self.add_arp_flow(datapath, self.h2, port_out_s3)
             
             # --- Bottom slice handling (cdn2 <-> h3, h4) ---
             port_out_h3 = self.get_out_port(dpid, self.h3)
             port_out_h4 = self.get_out_port(dpid, self.h4)
             self.add_mac_flow(datapath, self.cdn2, self.h3, port_out_h3)
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_h4)
-            self.add_arp(datapath, self.cdn2, [port_out_h3, port_out_h4])
+            self.add_arp_flow(datapath, self.cdn2, [port_out_h3, port_out_h4])
             
             port_out_s5 = self.get_out_port(dpid, 5) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s5)
             self.add_mac_flow(datapath, self.h4, self.cdn2, port_out_s5)
-            self.add_arp(datapath, self.h3, port_out_s5)
-            self.add_arp(datapath, self.h4, port_out_s5)
+            self.add_arp_flow(datapath, self.h3, port_out_s5)
+            self.add_arp_flow(datapath, self.h4, port_out_s5)
 
     
     def add_mac_flow(self, datapath, src, dst, out_port, priority=10):
@@ -158,10 +161,10 @@ class RyuController(app_manager.RyuApp):
         self.add_flow(datapath, priority, match, actions)
     
     
-    def add_arp(self, datapath, eth_src, out_port):
+    def add_arp_flow(self, datapath, eth_src, out_port):
         parser = datapath.ofproto_parser
         
-        match = parser.OFPMatch(eth_src=eth_src, eth_dst=mac_broadcast, eth_type=eth_type_arp)
+        match = parser.OFPMatch(eth_src=eth_src, eth_dst=MAC_BROADCAST, eth_type=ETH_TYPE_ARP)
         actions = []
         if not isinstance(out_port, list):
             out_port = [out_port]
@@ -169,6 +172,18 @@ class RyuController(app_manager.RyuApp):
         for port in out_port:
             actions.append(parser.OFPActionOutput(port))
         self.add_flow(datapath, priority=20, match=match, actions=actions)
+
+    def add_video_flow(self, datapath, src_mac, dst_mac, udp_port, out_port, priority=50):
+        parser = datapath.ofproto_parser
+        match = parser.OFPMatch(
+            eth_type=ETH_TYPE_IPV4, 
+            ip_proto=IP_PROTO_UDP,
+            eth_src=src_mac,
+            eth_dst=dst_mac,
+            udp_dst=udp_port
+        )
+        actions = [parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, priority, match, actions)
 
     
     def add_flow(self, datapath, priority, match, actions):

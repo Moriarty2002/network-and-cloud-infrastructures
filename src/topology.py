@@ -14,14 +14,14 @@ class Environment(object):
         self.c0.start()
         
         
-        self.cdn1 = self.net.addHost('cdn1', ip='10.0.0.1', mac=mac_cdns[0])
-        self.cdn2 = self.net.addHost('cdn2', ip='10.0.0.2', mac=mac_cdns[1])
+        self.cdn1 = self.net.addHost('cdn1', ip='10.0.0.1', mac=MAC_CDNS[0])
+        self.cdn2 = self.net.addHost('cdn2', ip='10.0.0.2', mac=MAC_CDNS[1])
         
         
-        self.h1 = self.net.addHost('h1', ip='10.0.0.4', mac=mac_hosts[0]) # premium user
-        self.h2 = self.net.addHost('h2', ip='10.0.0.5', mac=mac_hosts[1])
-        self.h3 = self.net.addHost('h3', ip='10.0.0.6', mac=mac_hosts[2])
-        self.h4 = self.net.addHost('h4', ip='10.0.0.7', mac=mac_hosts[3]) # premium user
+        self.h1 = self.net.addHost('h1', ip='10.0.0.4', mac=MAC_HOSTS[0]) # premium user
+        self.h2 = self.net.addHost('h2', ip='10.0.0.5', mac=MAC_HOSTS[1])
+        self.h3 = self.net.addHost('h3', ip='10.0.0.6', mac=MAC_HOSTS[2])
+        self.h4 = self.net.addHost('h4', ip='10.0.0.7', mac=MAC_HOSTS[3]) # premium user
 
         self.s1 = self.net.addSwitch('s1') # cdns common switch
         

@@ -77,11 +77,8 @@ class RyuController(app_manager.RyuApp):
             self.add_mac_flow(datapath, self.cdn1, self.h1, port_out_s3)
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_s3)
             self.add_arp_flow(datapath, self.cdn1, port_out_s3)
-            # premium streaming link
-            # port_out_s6 = self.get_out_port(dpid, 6)
-            # self.add_video_flow(datapath, self.cdn1, self.h1, UDP_PORT_STREAMING, port_out_s6)
-
-            self.add_to_controller_flow(datapath)
+            # premium streaming link management
+            self.add_to_controller_flow(datapath, CDNS_IP[0], PREMIUM_HOSTS[0])
 
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
@@ -109,9 +106,8 @@ class RyuController(app_manager.RyuApp):
             self.add_mac_flow(datapath, self.cdn2, self.h3, port_out_s5)
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_s5)
             self.add_arp_flow(datapath, self.cdn2, port_out_s5)
-            # premium streaming link
-            # port_out_s6 = self.get_out_port(dpid, 6)
-            # self.add_video_flow(datapath, self.cdn2, self.h4, UDP_PORT_STREAMING, port_out_s6)
+            # premium streaming link management
+            self.add_to_controller_flow(datapath, CDNS_IP[1], PREMIUM_HOSTS[1])
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s1)
@@ -194,11 +190,11 @@ class RyuController(app_manager.RyuApp):
         self.logger.info(f"Installed reroute for video stream on switch {datapath.id} → port {out_port}")
         self.add_flow(datapath, priority, match, actions, 10)
 
-    def add_to_controller_flow(self, datapath):
+    def add_to_controller_flow(self, datapath, ipv4_src, ipv4_dst):
         parser = datapath.ofproto_parser
         ofproto = datapath.ofproto
         
-        match = parser.OFPMatch(eth_type=0x0800, ip_proto=IP_PROTO_UDP, ipv4_src='10.0.0.1', ipv4_dst='10.0.0.4')
+        match = parser.OFPMatch(eth_type=ETH_TYPE_IPV4, ip_proto=IP_PROTO_UDP, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst)
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 30, match, actions)
         
@@ -218,6 +214,10 @@ class RyuController(app_manager.RyuApp):
     def get_out_port(self, dpid_src, dest) -> int:
         return self.out_port_map[dpid_src][dest]
     
+    
+    """
+    stats code
+    """
     
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
@@ -251,6 +251,7 @@ class RyuController(app_manager.RyuApp):
             udp_dst=udp_dst
         )
 
+        # we need this rules in order to manage udp ports dinamically in flow_stats_reply_handler
         if dpid == 2:
             port_out_s3 = self.get_out_port(dpid, 3)
             actions = [parser.OFPActionOutput(port_out_s3)]
@@ -260,9 +261,6 @@ class RyuController(app_manager.RyuApp):
         
         self.add_flow(dp, 50, match, actions)
 
-    """
-    stats code
-    """
     
     def _monitor(self):
         while True:
@@ -298,7 +296,7 @@ class RyuController(app_manager.RyuApp):
             if not all([src_ip, dst_ip, proto, udp_src, udp_dst]):
                 continue
 
-            if src_ip in CDN_IPS and dst_ip in PREMIUM_HOSTS:
+            if src_ip in CDNS_IP and dst_ip in PREMIUM_HOSTS:
                 duration = stat.duration_sec + stat.duration_nsec / 1e9
                 bytes_transferred = stat.byte_count
                 bitrate = (bytes_transferred * 8) / duration if duration > 0 else 0
@@ -311,11 +309,9 @@ class RyuController(app_manager.RyuApp):
                         port_out_s6 = self.get_out_port(dp.id, 6)
                         self.add_video_flow(dp, src_ip, dst_ip, udp_src, udp_dst, port_out_s6)
                         self.premium_flows.add(flow_id)
-                    else:
-                        self.logger.debug(f"Flow {flow_id} already rerouted, skipping")
 
 """
-    TODO: enable dynamic video flow rule also on bottom slice + fine tune heuristic to define video streaming + remove flow from premium_flows set using:
+    TODO: fine tune heuristic to define video streaming + remove flow from premium_flows set using:
     mod = parser.OFPFlowMod(
         datapath=dp,
         match=match,

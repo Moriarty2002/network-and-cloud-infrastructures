@@ -178,6 +178,8 @@ class RyuController(app_manager.RyuApp):
 
     def add_video_flow(self, datapath, src_ip, dst_ip, udp_src, udp_dst, out_port, priority=50):
         parser = datapath.ofproto_parser
+        ofproto = datapath.ofproto
+        
         match = parser.OFPMatch(
             eth_type=ETH_TYPE_IPV4, 
             ip_proto=IP_PROTO_UDP,
@@ -188,7 +190,8 @@ class RyuController(app_manager.RyuApp):
         )
         actions = [parser.OFPActionOutput(out_port)]
         self.logger.info(f"Installed reroute for video stream on switch {datapath.id} → port {out_port}")
-        self.add_flow(datapath, priority, match, actions, 10)
+        # 10s idle timeout + enable flow remove event
+        self.add_flow(datapath, priority, match, actions, 10, ofproto.OFPFF_SEND_FLOW_REM)
 
     def add_to_controller_flow(self, datapath, ipv4_src, ipv4_dst):
         parser = datapath.ofproto_parser
@@ -198,7 +201,7 @@ class RyuController(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 30, match, actions)
         
-    def add_flow(self, datapath, priority, match, actions, idle_timeout=0):
+    def add_flow(self, datapath, priority, match, actions, idle_timeout=0, flag=0):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
@@ -206,7 +209,7 @@ class RyuController(app_manager.RyuApp):
         mod = parser.OFPFlowMod(
             datapath=datapath, priority=priority,
             match=match, instructions=inst,
-            idle_timeout = idle_timeout
+            idle_timeout = idle_timeout, flags=flag
         )
         datapath.send_msg(mod)
     
@@ -240,8 +243,12 @@ class RyuController(app_manager.RyuApp):
         udp_src = udp_pkt.src_port
         udp_dst = udp_pkt.dst_port
 
-        self.logger.info(f"New UDP flow: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
+        self.logger.debug(f"New UDP flow: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
 
+        # we need this rules in order to manage udp ports dinamically in flow_stats_reply_handle
+        # because the match field are the only ones that we can view in the flow stats,
+        # withouth this match we could not check udp ports dinamically
+        
         match = parser.OFPMatch(
             eth_type=0x0800,
             ip_proto=17,
@@ -251,7 +258,6 @@ class RyuController(app_manager.RyuApp):
             udp_dst=udp_dst
         )
 
-        # we need this rules in order to manage udp ports dinamically in flow_stats_reply_handler
         if dpid == 2:
             port_out_s3 = self.get_out_port(dpid, 3)
             actions = [parser.OFPActionOutput(port_out_s3)]
@@ -310,18 +316,8 @@ class RyuController(app_manager.RyuApp):
                         self.add_video_flow(dp, src_ip, dst_ip, udp_src, udp_dst, port_out_s6)
                         self.premium_flows.add(flow_id)
 
-"""
-    TODO: fine tune heuristic to define video streaming + remove flow from premium_flows set using:
-    mod = parser.OFPFlowMod(
-        datapath=dp,
-        match=match,
-        instructions=inst,
-        priority=100,
-        idle_timeout=60,
-        hard_timeout=300,
-        flags=ofproto.OFPFF_SEND_FLOW_REM  # !!!!! <----- THIS FLAG ACTIVE LISTENING ON FLOW RULE REMOVE (check how to manage default flag values for other cases in add_flow)
-    )
-
+    
+    # Flow remove event
     @set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
     def flow_removed_handler(self, ev):
         match = ev.msg.match
@@ -331,8 +327,13 @@ class RyuController(app_manager.RyuApp):
         udp_dst = match.get('udp_dst')
 
         flow_id = (src_ip, dst_ip, udp_src, udp_dst)
-        if flow_id in self.rerouted_flows:
-            del self.rerouted_flows[flow_id]
-        self.logger.info(f"Flow removed by switch: {flow_id}")
+        if flow_id in self.premium_flows:
+            self.premium_flows.remove(flow_id)
+            self.logger.info(f"Flow removed by switch: {flow_id}")
+
+
+"""
+    TODO: fine tune heuristic to define video streaming
+
 """
     

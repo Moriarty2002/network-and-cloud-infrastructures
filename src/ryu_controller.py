@@ -6,6 +6,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4, udp
 from ryu.lib import hub
 from common import *
+from prometheus_client import start_http_server, Gauge
 
 class RyuController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -26,6 +27,15 @@ class RyuController(app_manager.RyuApp):
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)
         self.premium_flows = set()  # store flow identifiers
+        
+        # Give metrics for prometheus scraper
+        self.flow_bitrate_gauge = Gauge('flow_bitrate_mbps', 'Bitrate of flows in Mbps',
+                                ['src_ip', 'dst_ip', 'udp_src', 'udp_dst', 'switch_id'])
+        self.flow_duration_gauge = Gauge('flow_duration_s', 'Duration of flows in s',
+                                ['src_ip', 'dst_ip', 'udp_src', 'udp_dst', 'switch_id'])
+        self.flow_avg_pkt_size_gauge = Gauge('flow_avg_pkt_size', 'Average packet size of flows',
+                                ['src_ip', 'dst_ip', 'udp_src', 'udp_dst', 'switch_id'])
+        start_http_server(9200)  
 
     
     """
@@ -308,6 +318,13 @@ class RyuController(app_manager.RyuApp):
                 bitrate = (bytes_transferred * 8) / duration if duration > 0 else 0
                 avg_pkt_size = stat.byte_count / stat.packet_count if stat.packet_count > 0 else 0
                 
+                # prometheus metrics
+                bitrate_mbps = bitrate / 1e6
+                self.flow_bitrate_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dp.id)).set(bitrate_mbps)
+                self.flow_duration_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dp.id)).set(duration)
+                self.flow_avg_pkt_size_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), dp.id).set(avg_pkt_size)
+
+
                 # 3 Mbps threshold, 6s duration, more than 1000 pckt sent, medium packet size
                 if bitrate > 3_000_000 and duration > 6 and stat.packet_count > 1000 and 900 < avg_pkt_size < 1500:  
                     self.logger.info(f"Video flow identified: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
@@ -322,6 +339,7 @@ class RyuController(app_manager.RyuApp):
     # Flow remove event
     @set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
     def flow_removed_handler(self, ev):
+        dpid = ev.msg.datapath.id
         match = ev.msg.match
         src_ip = match.get('ipv4_src')
         dst_ip = match.get('ipv4_dst')
@@ -332,4 +350,9 @@ class RyuController(app_manager.RyuApp):
         if flow_id in self.premium_flows:
             self.premium_flows.remove(flow_id)
             self.logger.info(f"Flow removed by switch and ryu controller state: {flow_id}")
+            
+            # prometheus metrics
+            self.flow_bitrate_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dpid)).set(0)
+            self.flow_duration_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dpid)).set(0)
+            self.flow_avg_pkt_size_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dpid)).set(0)
     

@@ -1,0 +1,18 @@
+global:
+  scrape_interval:     2s
+
+  external_labels:
+    monitor: 'mininet-monitor'
+
+
+scrape_configs:
+  - job_name: 'prometheus'
+  
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          group: 'system'
+
+      - targets: ['172.17.0.1:9200'] # docker external interface
+        labels:
+          group: 'mininet'

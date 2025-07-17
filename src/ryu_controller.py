@@ -351,7 +351,7 @@ class RyuController(app_manager.RyuApp):
             self.premium_flows.remove(flow_id)
             self.logger.info(f"Flow removed by switch and ryu controller state: {flow_id}")
             
-            # prometheus metrics
+            # prometheus metrics reset
             self.flow_bitrate_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dpid)).set(0)
             self.flow_duration_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dpid)).set(0)
             self.flow_avg_pkt_size_gauge.labels(src_ip, dst_ip, str(udp_src), str(udp_dst), str(dpid)).set(0)

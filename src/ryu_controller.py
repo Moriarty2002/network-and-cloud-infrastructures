@@ -298,7 +298,7 @@ class RyuController(app_manager.RyuApp):
             udp_src = match_fields.get('udp_src')
             udp_dst = match_fields.get('udp_dst')
 
-            # Only consider complete flows that have been matched with rules from s2 and s4
+            # Only consider complete flows that matched with rules from s2 and s4
             if not all([src_ip, dst_ip, proto, udp_src, udp_dst]):
                 continue
 
@@ -306,12 +306,14 @@ class RyuController(app_manager.RyuApp):
                 duration = stat.duration_sec + stat.duration_nsec / 1e9
                 bytes_transferred = stat.byte_count
                 bitrate = (bytes_transferred * 8) / duration if duration > 0 else 0
-
-                if bitrate > 3_000_000:  # 3 Mbps threshold for video
-                    self.logger.info(f"VIDEO FLOW: {src_ip}:{udp_src} → {dst_ip}:{udp_dst} @ {bitrate/1e6:.2f} Mbps")
+                avg_pkt_size = stat.byte_count / stat.packet_count if stat.packet_count > 0 else 0
+                
+                # 3 Mbps threshold, 6s duration, more than 1000 pckt sent, medium packet size
+                if bitrate > 3_000_000 and duration > 6 and stat.packet_count > 1000 and 900 < avg_pkt_size < 1500:  
+                    self.logger.info(f"Video flow identified: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
                     flow_id = (src_ip, dst_ip, udp_src, udp_dst) 
                     if flow_id not in self.premium_flows:
-                        self.logger.info(f"Installing reroute for new video flow: {flow_id}")
+                        self.logger.info(f"Installing premium route for new video flow: {flow_id}")
                         port_out_s6 = self.get_out_port(dp.id, 6)
                         self.add_video_flow(dp, src_ip, dst_ip, udp_src, udp_dst, port_out_s6)
                         self.premium_flows.add(flow_id)
@@ -329,11 +331,5 @@ class RyuController(app_manager.RyuApp):
         flow_id = (src_ip, dst_ip, udp_src, udp_dst)
         if flow_id in self.premium_flows:
             self.premium_flows.remove(flow_id)
-            self.logger.info(f"Flow removed by switch: {flow_id}")
-
-
-"""
-    TODO: fine tune heuristic to define video streaming
-
-"""
+            self.logger.info(f"Flow removed by switch and ryu controller state: {flow_id}")
     

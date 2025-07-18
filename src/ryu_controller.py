@@ -254,10 +254,6 @@ class RyuController(app_manager.RyuApp):
         udp_dst = udp_pkt.dst_port
 
         self.logger.debug(f"New UDP flow: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
-
-        # we need this rules in order to manage udp ports dinamically in flow_stats_reply_handle
-        # because the match field are the only ones that we can view in the flow stats,
-        # withouth this match we could not check udp ports dinamically
         
         match = parser.OFPMatch(
             eth_type=0x0800,
@@ -275,7 +271,7 @@ class RyuController(app_manager.RyuApp):
             port_out_s5 = self.get_out_port(dpid, 5)
             actions = [parser.OFPActionOutput(port_out_s5)]
         
-        self.add_flow(dp, 50, match, actions)
+        self.add_flow(dp, 50, match, actions, 10)
 
     
     def _monitor(self):

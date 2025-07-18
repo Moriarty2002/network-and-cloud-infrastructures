@@ -254,10 +254,14 @@ class RyuController(app_manager.RyuApp):
         udp_dst = udp_pkt.dst_port
 
         self.logger.debug(f"New UDP flow: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
+
+        # we need this rules in order to manage udp ports dinamically in flow_stats_reply_handle
+        # because the match field are the only ones that we can view in the flow stats,
+        # withouth this match we could not check udp ports dinamically
         
         match = parser.OFPMatch(
-            eth_type=0x0800,
-            ip_proto=17,
+            eth_type=ETH_TYPE_IPV4,
+            ip_proto=IP_PROTO_UDP,
             ipv4_src=src_ip,
             ipv4_dst=dst_ip,
             udp_src=udp_src,

@@ -88,7 +88,7 @@ class RyuController(app_manager.RyuApp):
             self.add_mac_flow(datapath, self.cdn1, self.h2, port_out_s3)
             self.add_arp_flow(datapath, self.cdn1, port_out_s3)
             # premium streaming link management
-            self.add_to_controller_flow(datapath, CDNS_IP[0], PREMIUM_HOSTS[0])
+            self.add_to_controller_flow(datapath, CDNS_IP[0], PREMIUM_HOSTS_IP[0])
 
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
@@ -117,7 +117,7 @@ class RyuController(app_manager.RyuApp):
             self.add_mac_flow(datapath, self.cdn2, self.h4, port_out_s5)
             self.add_arp_flow(datapath, self.cdn2, port_out_s5)
             # premium streaming link management
-            self.add_to_controller_flow(datapath, CDNS_IP[1], PREMIUM_HOSTS[1])
+            self.add_to_controller_flow(datapath, CDNS_IP[1], PREMIUM_HOSTS_IP[1])
             
             port_out_s1 = self.get_out_port(dpid, 1) # reverse
             self.add_mac_flow(datapath, self.h3, self.cdn2, port_out_s1)
@@ -312,7 +312,7 @@ class RyuController(app_manager.RyuApp):
             if not all([src_ip, dst_ip, proto, udp_src, udp_dst]):
                 continue
 
-            if src_ip in CDNS_IP and dst_ip in PREMIUM_HOSTS:
+            if src_ip in CDNS_IP and dst_ip in PREMIUM_HOSTS_IP:
                 duration = stat.duration_sec + stat.duration_nsec / 1e9
                 bytes_transferred = stat.byte_count
                 bitrate = (bytes_transferred * 8) / duration if duration > 0 else 0
@@ -326,7 +326,7 @@ class RyuController(app_manager.RyuApp):
 
 
                 # 3 Mbps threshold, 6s duration, more than 1000 pckt sent, medium packet size
-                if bitrate > 3_000_000 and duration > 6 and stat.packet_count > 1000 and 900 < avg_pkt_size < 1500:  
+                if bitrate > TRESHOLD_BITRATE and duration > TRESHOLD_DURATION and stat.packet_count > TRESHOLD_PCK_COUNT and TRESHOLD_AVK_PKT_SIZE_MIN < avg_pkt_size < TRESHOLD_AVK_PKT_SIZE_MAX:  
                     self.logger.info(f"Video flow identified: {src_ip}:{udp_src} → {dst_ip}:{udp_dst}")
                     flow_id = (src_ip, dst_ip, udp_src, udp_dst) 
                     if flow_id not in self.premium_flows:
